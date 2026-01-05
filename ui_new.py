@@ -314,7 +314,7 @@ with tab2:
                  df_filtered = df[df["time"] == str(selected_date)]
             else:
                  df_filtered = df
-            
+
             if df_filtered.empty:
                 return pd.DataFrame()
 
@@ -587,23 +587,8 @@ with tab2:
     elif warning_group == "Khối lượng giao dịch":
         st.info("Cảnh báo các mã có khối lượng giao dịch đột biến hoặc tín hiệu kỹ thuật về Volume.")
         
-        # Load dates to populate filter
-        try:
-             path_vol = os.path.join("Volume", "result", "volume_signal_daily.csv")
-             if os.path.exists(path_vol):
-                 df_vol_raw = pd.read_csv(path_vol)
-                 if "time" in df_vol_raw.columns:
-                     available_dates = sorted(df_vol_raw["time"].unique(), reverse=True)
-                     selected_date_vol = st.selectbox("Chọn Ngày GD:", available_dates)
-                     
-                     df_display = get_volume_warnings(selected_date_vol)
-                     df_display_renamed = df_display.copy()
-                 else:
-                     st.warning("File dữ liệu Volume không có cột 'time'.")
-             else:
-                 st.error("Chưa có dữ liệu Volume (Volume/result/volume_signal_daily.csv).")
-        except Exception as e:
-            st.error(f"Lỗi: {e}")
+        df_display = get_volume_warnings()
+        df_display_renamed = df_display.copy()
 
     
     # --- Apply Filters (Common) ---
