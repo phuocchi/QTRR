@@ -285,7 +285,7 @@ with tab2:
 
     def get_margin_warnings():
         try:
-            path = os.path.join("result1", "hose_stocks.xlsx")
+            path = os.path.join("result1", "hose_stocks1.xlsx")
             df = pd.read_excel(path)
             if not df.empty:
                 # Rename symbol to Mã CP for consistency
