@@ -126,6 +126,17 @@ with tab2:
             # except Exception as e:
             #     st.error(f"Không tìm thấy file dữ liệu: {e}")
             return pd.DataFrame()
+    @st.cache_data
+    def load_cp_data():
+        try:
+            path = os.path.join("data", "cp.csv")
+            df = pd.read_csv(path)
+            if "Ticker" in df.columns:
+                df["Ticker"] = df["Ticker"].astype(str).str.strip().str.upper()
+            return df
+        except Exception as e:
+            return pd.DataFrame()
+
 
     def get_financial_warnings(view_mode, selected_year=None, selected_quarters=None):
         df_qtrr = load_qtrr_data()
@@ -343,6 +354,8 @@ with tab2:
             existing_cols = [c for c in cols_to_show if c in df.columns]
             
             df_final = df_filtered[existing_cols].rename(columns=rename_map)
+            if "Ngày" in df_final.columns:
+                df_final = df_final.sort_values(by="Ngày", ascending=False)
             return df_final
 
         except Exception as e:
@@ -439,13 +452,29 @@ with tab2:
     # Global filters for common tabs
     # (Only show if NOT "So sánh ngành" because that tab has its own specific logic?)
     # or Keep them? The user said "t có thể chọn được fillter của từng quý từng năm và từng ngành"
-    
+    df_cp = load_cp_data()
     if warning_group != "So sánh ngành":
+        # Get options from cp.csv
+        exchanges = []
+        sectors = []
+        if not df_cp.empty:
+            if "ComGroupCode" in df_cp.columns:
+                exchanges = sorted(df_cp["ComGroupCode"].dropna().unique())
+            if "nganh" in df_cp.columns:
+                sectors = sorted(df_cp["nganh"].dropna().unique())
+        
+        # Fallback
+        if not exchanges: 
+            exchanges = ["HOSE", "HNX", "UPCOM"]
+        if not sectors:
+            sectors = ["Ngân hàng", "Chứng khoán", "Bảo hiểm", "Phi tài chính"]
+
+
         c_filter_1, c_filter_2 = st.columns(2)
         with c_filter_1:
-            selected_exchanges = st.multiselect("Lọc theo Sàn:", ["HOSE", "HNX", "UPCOM"], default=[])
+            selected_exchanges = st.multiselect("Lọc theo Sàn:", exchanges, default=[])
         with c_filter_2:
-            selected_sectors = st.multiselect("Lọc theo ngành:", ["Ngân hàng", "Chứng khoán", "Bảo hiểm", "Phi tài chính"], default=[])
+            selected_sectors = st.multiselect("Lọc theo ngành:", sectors, default=[])
 
     # --- Display Logic ---
     df_display = pd.DataFrame()
@@ -580,9 +609,8 @@ with tab2:
         with col_i:
              selected_industries_comp = st.multiselect("Chọn Ngành:", available_industries, default=[])
 
-        if st.columns(1)[0].button("Tải dữ liệu so sánh"):
-            df_display = get_industry_comparison(view_mode, selected_year, selected_quarters, selected_industries_comp)
-            df_display_renamed = df_display.copy()
+        df_display = get_industry_comparison(view_mode, selected_year, selected_quarters, selected_industries_comp)
+        df_display_renamed = df_display.copy()
 
     elif warning_group == "Khối lượng giao dịch":
         st.info("Cảnh báo các mã có khối lượng giao dịch đột biến hoặc tín hiệu kỹ thuật về Volume.")
@@ -600,28 +628,55 @@ with tab2:
         
         # Logic to merge with main df to get Sàn/Mô hình if missing (SKIP for Ind Comparison as it has its own logic)
         if warning_group != "So sánh ngành":
-            if (selected_exchanges or selected_sectors) and "Sàn" not in df_display_renamed.columns:
-                 if "Mã CP" in df_display_renamed.columns and "Mã" in df.columns:
-                    df_merged = df_display_renamed.merge(
-                        df[["Mã", "Sàn", "Mô hình"]].drop_duplicates(),
-                        left_on="Mã CP",
-                        right_on="Mã",
-                        how="left"
-                    )
-                    if "Sàn" in df_merged.columns:
-                        df_display_renamed = df_merged
+            if not df_cp.empty:
+                 if "Mã CP" in df_display_renamed.columns:
+                     df_display_renamed = df_display_renamed.merge(
+                         df_cp,
+                         left_on="Mã CP",
+                         right_on="Ticker",
+                         how="left"
+                     )
+                     
+                     if selected_exchanges and "ComGroupCode" in df_display_renamed.columns:
+                         df_display_renamed = df_display_renamed[df_display_renamed["ComGroupCode"].isin(selected_exchanges)]
+                         
+                     if selected_sectors and "nganh" in df_display_renamed.columns:
+                         df_display_renamed = df_display_renamed[df_display_renamed["nganh"].isin(selected_sectors)]
+                         
+                     # Rename for display
+                     rename_dict = {}
+                     if "ComGroupCode" in df_display_renamed.columns:
+                         rename_dict["ComGroupCode"] = "Sàn"
+                     if "nganh" in df_display_renamed.columns:
+                         rename_dict["nganh"] = "Ngành"
+                     
+                     if rename_dict:
+                         df_display_renamed = df_display_renamed.rename(columns=rename_dict)
+            
+            else:  
+                # Fallback logic
+                if (selected_exchanges or selected_sectors) and "Sàn" not in df_display_renamed.columns:
+                    if "Mã CP" in df_display_renamed.columns and "Mã" in df.columns:
+                        df_merged = df_display_renamed.merge(
+                            df[["Mã", "Sàn", "Mô hình"]].drop_duplicates(),
+                            left_on="Mã CP",
+                            right_on="Mã",
+                            how="left"
+                        )
+                        if "Sàn" in df_merged.columns:
+                            df_display_renamed = df_merged
 
-            if selected_exchanges and "Sàn" in df_display_renamed.columns:
-                 df_display_renamed = df_display_renamed[df_display_renamed["Sàn"].isin(selected_exchanges)]
-            if selected_sectors and "Mô hình" in df_display_renamed.columns:
-                 df_display_renamed = df_display_renamed[df_display_renamed["Mô hình"].isin(selected_sectors)]
-        
+                if selected_exchanges and "Sàn" in df_display_renamed.columns:
+                    df_display_renamed = df_display_renamed[df_display_renamed["Sàn"].isin(selected_exchanges)]
+                if selected_sectors and "Mô hình" in df_display_renamed.columns:
+                    df_display_renamed = df_display_renamed[df_display_renamed["Mô hình"].isin(selected_sectors)]
+            
         # Specific filter for Margin Warning
         if warning_group == "Danh sách chứng khoán không được phép GDKQ" and "status" in df_display_renamed.columns:
-             unique_statuses = df_display_renamed["status"].unique().tolist()
-             selected_statuses = st.multiselect("Lọc theo trạng thái:", unique_statuses, default=unique_statuses)
-             if selected_statuses:
-                 df_display_renamed = df_display_renamed[df_display_renamed["status"].isin(selected_statuses)]
+            unique_statuses = df_display_renamed["status"].unique().tolist()
+            selected_statuses = st.multiselect("Lọc theo trạng thái:", unique_statuses, default=unique_statuses)
+            if selected_statuses:
+                df_display_renamed = df_display_renamed[df_display_renamed["status"].isin(selected_statuses)]
 
     # --- Custom Styling for Table ---
     def highlight_negative(val):
@@ -636,6 +691,13 @@ with tab2:
         return ''
 
     if not df_display_renamed.empty:
+        # Copy dữ liệu đầy đủ để xuất Excel
+        df_export = df_display_renamed.copy()
+        
+        # Ẩn 3 cột không mong muốn trên giao diện
+        cols_to_drop = ["Ticker", "Sàn", "Ngành"]
+        df_display_renamed = df_display_renamed.drop(columns=[c for c in cols_to_drop if c in df_display_renamed.columns])
+
         styled_df = df_display_renamed.style
         
         if warning_group == "So sánh ngành":
@@ -705,7 +767,10 @@ with tab2:
         # --- Xuất Excel ---
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            df_display_renamed.to_excel(writer, index=False, sheet_name="Data")
+            if 'df_export' in locals():
+                df_export.to_excel(writer, index=False, sheet_name="Data")
+            else:
+                df_display_renamed.to_excel(writer, index=False, sheet_name="Data")
 
         st.download_button(
             label="Tải dữ liệu về Excel",
