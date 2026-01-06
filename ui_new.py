@@ -104,7 +104,28 @@ with tab1:
         )
 
 with tab2:
-    st.markdown("<h2 style='text-align: center; color: #d9534f;'>⚠️ CẢNH BÁO RỦI RO & NHẬN DIỆN SỚM</h2>", unsafe_allow_html=True)
+    c_header, c_help = st.columns([15, 2])
+    with c_header:
+        st.markdown("<h2 style='text-align: center; color: #d9534f;'>⚠️ CẢNH BÁO RỦI RO & NHẬN DIỆN SỚM</h2>", unsafe_allow_html=True)
+    with c_help:
+        st.write("") # Spacer align
+        with st.popover("Hướng dẫn", use_container_width=True):
+            st.markdown("### 📖 Hướng dẫn sử dụng")
+            
+            st.markdown("#### 1. BCTC âm")
+            st.info("Chức năng BCTC âm sẽ là 3 kỳ liên tiếp về sau nó âm sẽ hiện 3 cờ (🚩🚩🚩).")
+            
+            st.markdown("#### 2. Tăng trưởng ảo")
+            st.markdown("Cảnh báo khi Doanh thu thuần dương (>0) nhưng Lưu chuyển tiền thuần từ HĐKD âm (<0) trong 2 kỳ liên tiếp.")
+            
+            st.markdown("#### 3. So sánh ngành")
+            st.markdown("So sánh Biên lợi nhuận Gộp và Ròng của doanh nghiệp với trung bình ngành.")
+            
+            st.markdown("#### 4. Khối lượng giao dịch")
+            st.markdown("Cảnh báo khối lượng giao dịch đột biến so với trung bình 20/50 phiên.")
+            
+            st.markdown("#### 5. DS không được phép GDKQ")
+            st.markdown("Danh sách các mã bị cắt margin, đưa vào diện cảnh báo/kiểm soát.")
     
     # --- Selector Nhóm Cảnh Báo ---
     warning_group = st.selectbox(
@@ -453,7 +474,7 @@ with tab2:
     # (Only show if NOT "So sánh ngành" because that tab has its own specific logic?)
     # or Keep them? The user said "t có thể chọn được fillter của từng quý từng năm và từng ngành"
     df_cp = load_cp_data()
-    if warning_group != "So sánh ngành":
+    if warning_group != "So sánh ngành" and warning_group != "Danh sách chứng khoán không được phép GDKQ":
         # Get options from cp.csv
         exchanges = []
         sectors = []
@@ -486,22 +507,23 @@ with tab2:
         # Filters for Financials
         raw_df = load_qtrr_data()
         
-        col_y, col_q = st.columns(2)
-        with col_y:
+        c1, c2, c3 = st.columns(3)
+        with c1:
             view_mode = st.radio("Xem dữ liệu theo:", ["Quý", "Năm"], horizontal=True)
             
-            # Filter available years based on View Mode
-            if view_mode == "Năm":
-                years_in_data = raw_df[raw_df["LengthReport"] == 5]["YearReport"].unique()
-            else:
-                years_in_data = raw_df[raw_df["LengthReport"] != 5]["YearReport"].unique()
-                
-            available_years = sorted(years_in_data, reverse=True) if len(years_in_data) > 0 else []
+        # Filter available years based on View Mode
+        if view_mode == "Năm":
+            years_in_data = raw_df[raw_df["LengthReport"] == 5]["YearReport"].unique()
+        else:
+            years_in_data = raw_df[raw_df["LengthReport"] != 5]["YearReport"].unique()
+            
+        available_years = sorted(years_in_data, reverse=True) if len(years_in_data) > 0 else []
+        
+        with c2:
             selected_year = st.selectbox("Chọn Năm:", available_years, key="fin_year")
 
-        
         selected_quarters = []
-        with col_q:
+        with c3:
             if view_mode == "Quý":
                  # Helper to get quarters for selected year
                  if "KyBaoCao" in raw_df.columns and "YearReport" in raw_df.columns:
@@ -520,8 +542,6 @@ with tab2:
                      selected_q_nums = st.multiselect("Chọn Quý:", available_quarters, default=available_quarters[:1], key="fin_quarters")
                      # Convert back to string format for filtering
                      selected_quarters = [f"{selected_year}_Q{q}" for q in selected_q_nums]
-            else:
-                st.write("") # Spacer
 
         df_display = get_financial_warnings(view_mode, selected_year, selected_quarters)
         df_display_renamed = df_display.copy()
@@ -627,7 +647,7 @@ with tab2:
                 df_display_renamed = df_display_renamed[df_display_renamed["Mã CP"].isin(risk_tickers)]
         
         # Logic to merge with main df to get Sàn/Mô hình if missing (SKIP for Ind Comparison as it has its own logic)
-        if warning_group != "So sánh ngành":
+        if warning_group != "So sánh ngành" and warning_group != "Danh sách chứng khoán không được phép GDKQ":
             if not df_cp.empty:
                  if "Mã CP" in df_display_renamed.columns:
                      df_display_renamed = df_display_renamed.merge(
