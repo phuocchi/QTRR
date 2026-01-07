@@ -12,9 +12,6 @@ st.set_page_config(
     page_icon="Mega.jpg",  
     layout="wide"
 )
-
-
-
 # --- Load dữ liệu ---
 file_path = os.path.join("result", "summary.xlsx")
 
@@ -104,33 +101,12 @@ with tab1:
         )
 
 with tab2:
-    c_header, c_help = st.columns([15, 2])
-    with c_header:
-        st.markdown("<h2 style='text-align: center; color: #d9534f;'>⚠️ CẢNH BÁO RỦI RO & NHẬN DIỆN SỚM</h2>", unsafe_allow_html=True)
-    with c_help:
-        st.write("") # Spacer align
-        with st.popover("Hướng dẫn", use_container_width=True):
-            st.markdown("### 📖 Hướng dẫn sử dụng")
-            
-            st.markdown("#### 1. BCTC âm")
-            st.info("Chức năng BCTC âm sẽ là 3 kỳ liên tiếp về sau nó âm sẽ hiện 3 cờ (🚩🚩🚩).")
-            
-            st.markdown("#### 2. Tăng trưởng ảo")
-            st.markdown("Cảnh báo khi Doanh thu thuần dương (>0) nhưng Lưu chuyển tiền thuần từ HĐKD âm (<0) trong 2 kỳ liên tiếp.")
-            
-            st.markdown("#### 3. So sánh ngành")
-            st.markdown("So sánh Biên lợi nhuận Gộp và Ròng của doanh nghiệp với trung bình ngành.")
-            
-            st.markdown("#### 4. Khối lượng giao dịch")
-            st.markdown("Cảnh báo khối lượng giao dịch đột biến so với trung bình 20/50 phiên.")
-            
-            st.markdown("#### 5. DS không được phép GDKQ")
-            st.markdown("Danh sách các mã bị cắt margin, đưa vào diện cảnh báo/kiểm soát.")
+    st.markdown("<h2 style='text-align: center; color: #d9534f;'>⚠️ CẢNH BÁO RỦI RO & NHẬN DIỆN SỚM</h2>", unsafe_allow_html=True)
     
     # --- Selector Nhóm Cảnh Báo ---
     warning_group = st.selectbox(
         "Chọn nhóm cảnh báo:",
-        ["Tăng trưởng ảo", "BCTC âm", "Danh sách chứng khoán không được phép GDKQ", "So sánh ngành", "Khối lượng giao dịch"]
+        ["Tăng trưởng ảo", "BCTC âm", "Danh sách chứng khoán không được phép GDKQ", "So sánh ngành", "Khối lượng giao dịch", "Room margin"]
     )
 #   "Nội bộ doanh nghiệp", "Thanh khoản cổ phiếu"
     # --- Data Generators ---
@@ -210,12 +186,12 @@ with tab2:
             # If default (no year/quarter passed), maybe default to latest? 
             # But the UI will provide defaults.
 
-        
+
         # 3. Select and Rename Columns
         cols_to_show = ["Ticker", "KyBaoCao", "Tăng trưởng ảo", 'Lưu chuyển tiền thuần từ HĐKD', "Doanh thu thuần", "Cổ đông của công ty mẹ", "LNST"]
         # Ensure columns exist
         cols_existing = [c for c in cols_to_show if c in df_filtered.columns]
-        
+
         df_final = df_filtered[cols_existing].rename(columns={
             "Cổ đông của công ty mẹ": "Lợi nhuận của công ty mẹ",
             "Ticker": "Mã CP"
@@ -329,6 +305,8 @@ with tab2:
             st.error(f"Lỗi khi đọc file hose_stocks.xlsx: {e}")
             return pd.DataFrame()
 
+
+
     def get_volume_warnings(selected_date=None):
         try:
             # Try to locate the csv file
@@ -370,6 +348,7 @@ with tab2:
                 "flag_break_vol_100": "Đột biến Vol 100",
                 "flag_break_vol_200": "Đột biến Vol 200"
             }
+
             # Select relevant columns
             cols_to_show = ["symbol", "time", "volume", "vol_vs_ma20_pct", "vol_vs_ma50_pct", "vol_vs_ma100_pct", "vol_vs_ma200_pct", "flag_break_vol_100", "flag_break_vol_200"]
             existing_cols = [c for c in cols_to_show if c in df.columns]
@@ -638,6 +617,82 @@ with tab2:
         df_display = get_volume_warnings()
         df_display_renamed = df_display.copy()
 
+    elif warning_group == "Room margin":
+
+        
+        capital_billion = st.number_input("Nhập Vốn (Tỷ):", min_value=0.0, value=1.0, step=0.1, format="%.1f")
+        
+        df_cp_list = load_cp_data()
+        
+        # --- Load additional data for Max Room 2 ---
+        df_fin = load_qtrr_data()
+        try:
+             price_path = os.path.join("data", "stock_prices.csv")
+             df_price = pd.read_csv(price_path)
+        except Exception:
+             df_price = pd.DataFrame()
+             
+        if not df_cp_list.empty:
+             df_display = df_cp_list[["Ticker"]].copy()
+             
+             # 1. Calc Max Room 1
+             df_display["Room (VCSH)"] = capital_billion * 0.1
+             
+             # 2. Calc Max Room 2
+             # Prepare Financial Data (Latest Vốn cổ phần + Period info)
+             if not df_fin.empty and "Vốn cổ phần" in df_fin.columns:
+                 # Sort to get latest
+                 df_fin_sorted = df_fin.sort_values(by=["Ticker", "YearReport", "KyBaoCao"], ascending=[True, False, False])
+                 df_fin_latest = df_fin_sorted.drop_duplicates(subset=["Ticker"])[["Ticker", "Vốn cổ phần", "YearReport", "KyBaoCao"]]
+                 
+                 df_display = df_display.merge(df_fin_latest, on="Ticker", how="left")
+                 
+                 # Create combined Period string
+                 df_display["Kỳ BCTC"] = df_display["KyBaoCao"].astype(str) 
+                 # Calculate Shares Outstanding
+                 df_display["KL Lưu hành"] = df_display["Vốn cổ phần"] / 10000
+             
+             # Prepare Price Data (Latest Close + Date)
+             if not df_price.empty and "symbol" in df_price.columns and "close" in df_price.columns:
+                 if "time" in df_price.columns:
+                     df_price = df_price.sort_values(by=["symbol", "time"])
+                 
+                 # Get last close AND last time
+                 df_price_latest = df_price.groupby("symbol")[["close", "time"]].last().reset_index()
+                 df_price_latest = df_price_latest.rename(columns={"symbol": "Ticker", "close": "Giá", "time": "Ngày GD"})
+                 
+                 df_display = df_display.merge(df_price_latest, on="Ticker", how="left")
+                 
+             # Calculate Formula: KL Lưu hành * 5% * (Giá * 1000) / 1 Billion
+             if "KL Lưu hành" in df_display.columns and "Giá" in df_display.columns:
+                 # Fill NaNs
+                 df_display["KL Lưu hành"] = df_display["KL Lưu hành"].fillna(0) # Temp for calculation
+                 df_display["Giá"] = df_display["Giá"].fillna(0)
+                 
+                 val_vnd = df_display["KL Lưu hành"] * 0.05 * (df_display["Giá"] * 1000)
+                 df_display["Room (số lượng cp lưu hành)"] = val_vnd / 1_000_000_000
+                 
+             else:
+                 df_display["Room (số lượng cp lưu hành)"] = 0
+
+             # 3. Calc Max Room Cho Vay (Min of 1 & 2)
+             df_display["Max Room Cho Vay"] = df_display[["Room (VCSH)", "Room (số lượng cp lưu hành)"]].min(axis=1)
+
+             # Clean up temp cols of raw data
+             cols_to_drop = ["Vốn cổ phần", "YearReport", "KyBaoCao"]
+             df_display = df_display.drop(columns=[c for c in cols_to_drop if c in df_display.columns])
+
+             # Reorder columns for nice display
+             ordered_cols = ["Ticker", "Kỳ BCTC", "KL Lưu hành", "Ngày GD", "Giá", "Room (VCSH)", "Room (số lượng cp lưu hành)", "Max Room Cho Vay"]
+             # Filter only those that exist
+             final_cols = [c for c in ordered_cols if c in df_display.columns]
+             df_display = df_display[final_cols]
+
+             df_display_renamed = df_display.rename(columns={"Ticker": "Mã CP"})
+        else:
+             st.warning("Không tìm thấy dữ liệu cổ phiếu (cp.csv).")
+             df_display_renamed = pd.DataFrame()
+
     
     # --- Apply Filters (Common) ---
     if not df_display_renamed.empty:
@@ -777,6 +832,15 @@ with tab2:
              vol_pct_cols = [c for c in df_display_renamed.columns if "% Tăng" in c]
              if vol_pct_cols:
                  styled_df = styled_df.map(highlight_volume_change, subset=vol_pct_cols)
+
+        elif "Room (VCSH)" in df_display_renamed.columns:
+             styled_df = styled_df.format({
+                 "Room (VCSH)": lambda x: "{:,.2f}".format(x).rstrip('0').rstrip('.') if pd.notnull(x) else "",
+                 "Room (số lượng cp lưu hành)": lambda x: "{:,.2f}".format(x).rstrip('0').rstrip('.') if pd.notnull(x) else "",
+                 "Max Room Cho Vay": lambda x: "{:,.2f}".format(x).rstrip('0').rstrip('.') if pd.notnull(x) else "",
+                 "KL Lưu hành": "{:,.0f}",
+                 "Giá": "{:,.2f}"
+             })
 
         st.dataframe(
             styled_df, 
