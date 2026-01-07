@@ -193,7 +193,7 @@ with tab2:
         cols_existing = [c for c in cols_to_show if c in df_filtered.columns]
 
         df_final = df_filtered[cols_existing].rename(columns={
-            "Cổ đông của công ty mẹ": "LNST cổ đông công ty mẹ",
+            "Cổ đông của công ty mẹ": "Lợi nhuận của công ty mẹ",
             "Ticker": "Mã CP"
         })
         
@@ -533,7 +533,7 @@ with tab2:
             view_mode = st.radio("Xem dữ liệu theo:", ["Quý", "Năm"], horizontal=True, key="cf_view_mode")
             
         with col_metrics:
-            available_metrics = ["Lưu chuyển tiền thuần từ HĐKD", "Cổ đông của công ty mẹ", "LNST"]
+            available_metrics = ["Lưu chuyển tiền thuần từ HĐKD", "Cổ đông của công ty mẹ"]
             selected_metrics = st.multiselect(
                 "Chọn chỉ số cảnh báo:", 
                 available_metrics, 
@@ -794,8 +794,8 @@ with tab2:
              if subset_diff:
                  styled_df = styled_df.map(highlight_diff, subset=subset_diff)
 
-        elif "LNST cổ đông công ty mẹ" in df_display_renamed.columns:
-            styled_df = styled_df.map(highlight_negative, subset=["Lưu chuyển tiền thuần từ HĐKD", "LNST cổ đông công ty mẹ", "LNST"])
+        elif "Lợi nhuận của công ty mẹ" in df_display_renamed.columns:
+            styled_df = styled_df.map(highlight_negative, subset=["Lưu chuyển tiền thuần từ HĐKD", "Lợi nhuận của công ty mẹ", "LNST"])
             styled_df = styled_df.format(thousands=",", precision=0)
 
         elif "Khối lượng" in df_display_renamed.columns:
