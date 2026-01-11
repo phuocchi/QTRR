@@ -196,8 +196,8 @@ with tab2:
             "Cổ đông của công ty mẹ": "Lợi nhuận của công ty mẹ",
             "Ticker": "Mã CP"
         })
-        
-        
+
+
         return df_final
 
     def get_cash_flow_warnings(view_mode, metrics=None):
@@ -291,19 +291,59 @@ with tab2:
             })
         return pd.DataFrame(data)
 
-    def get_margin_warnings():
-        try:
-            path = os.path.join("result1", "hose_stocks1.xlsx")
-            df = pd.read_excel(path)
-            if not df.empty:
-                # Rename symbol to Mã CP for consistency
-                if "symbol" in df.columns:
-                    df = df.rename(columns={"symbol": "Mã CP"})
-                return df
-            return pd.DataFrame()
-        except Exception as e:
-            st.error(f"Lỗi khi đọc file hose_stocks.xlsx: {e}")
-            return pd.DataFrame()
+    def get_margin_warnings(exchange="HOSE", hnx_list_type=None):
+        if exchange == "HOSE":
+            try:
+                path = os.path.join("result1", "tinh_trang_chung_khoan_hose.csv")
+                df = pd.read_csv(path)
+                if not df.empty:
+                    # Rename symbol to Mã CP for consistency
+                    if "symbol" in df.columns:
+                        df = df.rename(columns={"symbol": "Mã CP"})
+                    return df
+                return pd.DataFrame()
+            except Exception as e:
+                st.error(f"Lỗi khi đọc file tinh_trang_chung_khoan_hose.csv: {e}")
+                return pd.DataFrame()
+        
+        elif exchange == "HNX":
+            try:
+                dfs = []
+                # File 1: Khong duoc ky quy
+                if hnx_list_type is None or hnx_list_type == "Không được ký quỹ":
+                    path1 = os.path.join("result1", "khong_duoc_ky_quy_hnx.csv")
+                    if os.path.exists(path1):
+                        df1 = pd.read_csv(path1)
+                        if not df1.empty:
+                            # Rename columns to match expected schema ("Mã CP", "Lý do")
+                            rename_map = {"Mã CK": "Mã CP"}
+                            df1 = df1.rename(columns=rename_map)
+                            dfs.append(df1)
+
+                # File 2: Tinh trang chung khoan
+                if hnx_list_type is None or hnx_list_type == "Tình trạng chứng khoán":
+                    path2 = os.path.join("result1", "tinh_trang_chung_khoan_hnx.csv")
+                    if os.path.exists(path2):
+                        df2 = pd.read_csv(path2)
+                        if not df2.empty:
+                            rename_map = {
+                                "Mã CK": "Mã CP", 
+                                "Tình trạng chứng khoán": "Lý do",
+                                "Tên tổ chức phát hành": "Tên công ty"
+                            }
+                            df2 = df2.rename(columns=rename_map)
+                            dfs.append(df2)
+                
+                if dfs:
+                    df_final = pd.concat(dfs, ignore_index=True)
+                    return df_final
+                return pd.DataFrame()
+
+            except Exception as e:
+                st.error(f"Lỗi khi đọc dữ liệu HNX: {e}")
+                return pd.DataFrame()
+        
+        return pd.DataFrame()
 
 
 
@@ -558,7 +598,16 @@ with tab2:
         df_display_renamed = df_display.copy()
 
     elif warning_group == "Danh sách chứng khoán không được phép GDKQ":
-        df_display = get_margin_warnings()
+        c_ex, c_type = st.columns([1, 2])
+        with c_ex:
+            exchange = st.radio("Chọn Sàn:", ["HOSE", "HNX"], horizontal=True)
+        
+        hnx_list_type = None
+        if exchange == "HNX":
+            with c_type:
+                hnx_list_type = st.radio("Loại danh sách:", ["Không được ký quỹ", "Tình trạng chứng khoán"], horizontal=True)
+
+        df_display = get_margin_warnings(exchange, hnx_list_type)
         df_display_renamed = df_display.copy()
 
     elif warning_group == "So sánh ngành":
@@ -746,12 +795,7 @@ with tab2:
                 if selected_sectors and "Mô hình" in df_display_renamed.columns:
                     df_display_renamed = df_display_renamed[df_display_renamed["Mô hình"].isin(selected_sectors)]
             
-        # Specific filter for Margin Warning
-        if warning_group == "Danh sách chứng khoán không được phép GDKQ" and "status" in df_display_renamed.columns:
-            unique_statuses = df_display_renamed["status"].unique().tolist()
-            selected_statuses = st.multiselect("Lọc theo trạng thái:", unique_statuses, default=unique_statuses)
-            if selected_statuses:
-                df_display_renamed = df_display_renamed[df_display_renamed["status"].isin(selected_statuses)]
+
 
     # --- Custom Styling for Table ---
     def highlight_negative(val):
